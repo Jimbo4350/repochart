@@ -1,10 +1,8 @@
 module Main where
 
 import           Conduit
-import           Data.Char                        (toUpper)
 import qualified Data.Text                        as T
 import           System.FilePath                  (takeExtension)
-import           Language.Haskell.Exts.ExactPrint (exactPrint)
 import           Language.Haskell.Exts.Parser     (fromParseResult,
                                                    parseModuleWithMode)
 import           Lib                              (defaultParseMode',

@@ -30,7 +30,8 @@ dependencies:
 - text
 
 library:
-  source-dirs: src
+  source-dirs:           src
+  ghc-options:           -Wall
 
 executables:
   repochart-exe:
