@@ -1,17 +1,18 @@
 module Main where
 
-import           Conduit
-import qualified Data.Text                        as T
-import           System.FilePath                  (takeExtension)
-import           Language.Haskell.Exts.Parser     (fromParseResult,
-                                                   parseModuleWithMode)
-import           Lib                              (defaultParseMode',
-                                                   parseAllDataDecls,
-                                                   parseDataTypes,
-                                                   parseNewTypes,
-                                                   printDeclarations,
-                                                   returnListDecl)
+--import           Conduit
+--import qualified Data.Text                        as T
+--import           System.FilePath                  (takeExtension)
+import           Language.Haskell.Exts.Parser (fromParseResult,
+                                               parseModuleWithMode)
+import           SrcManipulation              (getDataDecls, printDeclarations,
+                                               returnListDecl, getNewTypeDecls)
 
+import           Parser                       (defaultParseMode',
+                                               finalNormalDataTypeParser,
+                                               parseDataDeclarations,
+                                               removeNewLines,
+                                               finalNewTypeParser)
 {-
 main :: IO ()
 main =
@@ -30,7 +31,7 @@ main =
     .| encodeUtf8C
     .| stdoutC
 -}
-
+{-
 main :: IO ()
 main =
     runConduitRes
@@ -49,3 +50,15 @@ main =
     .| mapC T.pack
     .| encodeUtf8C
     .| stdoutC
+-}
+
+main :: IO ()
+main = do
+    contents <- readFile "test/TestModule.hs"
+    let moduleSrsSpan = fromParseResult $ parseModuleWithMode defaultParseMode' contents
+    let dataList = getDataDecls $ returnListDecl moduleSrsSpan
+    let newTypeList = getNewTypeDecls $ returnListDecl moduleSrsSpan
+    let dataStrings = map finalNormalDataTypeParser . removeNewLines $ printDeclarations dataList
+    let ntStrings = map finalNewTypeParser . removeNewLines $ printDeclarations newTypeList
+    print dataStrings
+    print ntStrings

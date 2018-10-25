@@ -24,6 +24,7 @@ dependencies:
 - bytestring
 - conduit
 - haskell-src-exts
+- hedgehog
 - pretty-simple
 - parsec
 - filepath
@@ -31,6 +32,9 @@ dependencies:
 
 library:
   source-dirs:           src
+  exposed-modules:
+  - Parser
+  - SrcManipulation
   ghc-options:           -Wall
 
 executables:
@@ -46,7 +50,9 @@ executables:
 
 tests:
   repochart-test:
-    main:                Spec.hs
+    main:                test.hs
+    other-modules:       Test.Gen
+                         Test.Props
     source-dirs:         test
     ghc-options:
     - -threaded
