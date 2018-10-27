@@ -3,14 +3,14 @@ module Main where
 --import           Conduit
 --import qualified Data.Text                        as T
 --import           System.FilePath                  (takeExtension)
+import Data.Either (isRight)
 import           Language.Haskell.Exts.Parser (fromParseResult,
                                                parseModuleWithMode)
 import           SrcManipulation              (getDataDecls, printDeclarations,
-                                               returnListDecl, getNewTypeDecls)
+                                               returnListDecl, getNewTypeDecls, dataDecHasRecordAccessor)
 
 import           Parser                       (defaultParseMode',
                                                finalNormalDataTypeParser,
-                                               parseDataDeclarations,
                                                removeNewLines,
                                                finalNewTypeParser)
 {-
@@ -31,6 +31,7 @@ main =
     .| encodeUtf8C
     .| stdoutC
 -}
+
 {-
 main :: IO ()
 main =
@@ -56,9 +57,15 @@ main :: IO ()
 main = do
     contents <- readFile "test/TestModule.hs"
     let moduleSrsSpan = fromParseResult $ parseModuleWithMode defaultParseMode' contents
+
+    -- Get [Decl SrcSpanInfo]
     let dataList = getDataDecls $ returnListDecl moduleSrsSpan
     let newTypeList = getNewTypeDecls $ returnListDecl moduleSrsSpan
+    let recAccDataList = filter (isRight . dataDecHasRecordAccessor) (returnListDecl moduleSrsSpan)
+
+    let dataRecAcc = removeNewLines $ printDeclarations recAccDataList
     let dataStrings = map finalNormalDataTypeParser . removeNewLines $ printDeclarations dataList
     let ntStrings = map finalNewTypeParser . removeNewLines $ printDeclarations newTypeList
-    print dataStrings
-    print ntStrings
+    --print dataStrings
+    --print ntStrings
+    print dataRecAcc

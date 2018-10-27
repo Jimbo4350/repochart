@@ -35,7 +35,7 @@ import           Language.Haskell.Exts.Extension (Extension (..), Language (..))
 import           Language.Haskell.Exts.Fixity    (preludeFixities)
 import           Language.Haskell.Exts.Parser    (ParseMode (..))
 import           Text.Parsec                     (ParseError, Parsec, alphaNum,
-                                                  anyChar, between, char, endBy,
+                                                  anyChar, between, char,
                                                   eof, many, manyTill, newline,
                                                   noneOf, parse, sepBy, sepBy1,
                                                   sepEndBy, skipMany, space,

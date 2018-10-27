@@ -1,5 +1,6 @@
 module SrcManipulation
-    ( getDataDecls
+    ( dataDecHasRecordAccessor
+    , getDataDecls
     , getNewTypeDecls
     , printDeclarations
     , returnListDecl
@@ -11,9 +12,17 @@ import           Language.Haskell.Exts.Syntax
 
 -- DataDecl l (DataOrNew l) (Maybe (Context l)) (DeclHead l) [QualConDecl l] [Deriving l]
 
-returnListDecl :: Module SrcSpanInfo -> [Decl SrcSpanInfo]
-returnListDecl (Module _ _ _ _ declList) = declList
-returnListDecl _ = error "Error with returnListDecl"
+-- You don't propagate this Left. Is is necessary?
+dataDecHasRecordAccessor :: Decl SrcSpanInfo -> Either String (Decl SrcSpanInfo)
+dataDecHasRecordAccessor dataDecl = do
+    let qualConList = getQualConList dataDecl
+    case True `elem` map recordChecker qualConList of
+        True -> Right dataDecl
+        False -> Left "dataDecHasRecordAccessor: No record accessor in this datatype"
+
+recordChecker :: QualConDecl l -> Bool
+recordChecker (QualConDecl _ _ _ RecDecl {}) = True
+recordChecker _ = False
 
 getDataDecls :: [Decl SrcSpanInfo] -> [Decl SrcSpanInfo]
 getDataDecls [] = []
@@ -31,7 +40,16 @@ getNewTypeDecls (DataDecl l (NewType dt) Nothing declHead qualConList derivingLi
     = DataDecl l (NewType dt) Nothing declHead qualConList derivingList : getNewTypeDecls xs
 getNewTypeDecls (_ : xs) = getNewTypeDecls xs
 
+getQualConList :: Decl SrcSpanInfo -> [QualConDecl SrcSpanInfo]
+getQualConList (DataDecl _ _ _ _ qualConDecList _ ) = qualConDecList
+getQualConList _ = []
+
 -- | Uses ExactPrint instance to print the AST as it was parsed.
 printDeclarations :: [Decl SrcSpanInfo] -> [String]
 printDeclarations = map (flip exactPrint [])
+
+returnListDecl :: Module SrcSpanInfo -> [Decl SrcSpanInfo]
+returnListDecl (Module _ _ _ _ declList) = declList
+returnListDecl _ = error "Error with returnListDecl"
+
 
