@@ -15,12 +15,16 @@ import           Parser                     (finalDataTypeParser,
                                              newTypeUnparse,
                                              normalDatatypeParser,
                                              parseDataDeclarations,
+                                             parseMultipleRecords, parseRecord,
                                              unParseDataDec,
-                                             unParseNormalDataDec)
+                                             unParseNormalDataDec,
+                                             unparseMultipleRecords,
+                                             unparseRecord)
 
 import           Test.Gen                   (genDataDeclation,
                                              genNewTypeDeclaration,
-                                             genNullaryDataDeclation)
+                                             genNullaryDataDeclation, genRecord,
+                                             genRecordAccessorConstructor)
 
 -- Potentially unnecessary as the parser tested in the last 2 properties
 -- works for nullary constructor only datatypes
@@ -51,6 +55,27 @@ prop_parseUnparseNewtype = property $ do
     case finalNewTypeParser newType of
         Left err  -> failWith Nothing $ show err
         Right str -> newTypeUnparse str === newType
+
+-- Record accessor parsers tests
+
+-- Only tests this string format:
+-- auianfjlv :: RVETBtok
+prop_parseUnparseSingleRecord :: Property
+prop_parseUnparseSingleRecord = property $ do
+    record <- forAll genRecord
+    case parseRecord record of
+        Left err  -> failWith Nothing $ show err
+        Right str -> unparseRecord str === record
+
+-- Only tests this string format:
+-- { auianfjlv :: RVETBtok , dcyqnvbgd :: DoYQ , eylexcij :: HQRUyN , hjmahiwegm :: GnvcHvVxJ }
+prop_parseUnparseMultipleRecords :: Property
+prop_parseUnparseMultipleRecords = property $ do
+    records <- forAll genRecordAccessorConstructor
+    case parseMultipleRecords records of
+        Left err  -> failWith Nothing $ show err
+        Right str -> unparseMultipleRecords str === records
+
 
 tests :: IO Bool
 tests =

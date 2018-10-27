@@ -4,8 +4,11 @@ module Test.Gen
        , genDeclarationName
        , genNewTypeDeclaration
        , genNullaryDataDeclation
+       , genConstructor
+       , genRecord
+       , genRecordAccessorConstructor
        ) where
-import           Data.List      (intersperse)
+import           Data.List      (intercalate, intersperse)
 import           Hedgehog       (Gen)
 import qualified Hedgehog.Gen   as Gen
 import qualified Hedgehog.Range as Range
@@ -48,3 +51,28 @@ genNewTypeDeclaration = do
     equal <- Gen.constant " = "
     wrappedType <- genDeclarationName
     pure $ concat [ntype, nTName, equal, nTName, " ", wrappedType]
+
+-- These generators generate strings for the sub parsers
+-- of the record accessor parser.
+
+genConstructor :: Gen String
+genConstructor = do
+    constDecBody <- Gen.string (Range.constant 3 10) Gen.alpha
+    capital <- Gen.string (Range.singleton 1) Gen.upper
+    pure (capital ++ constDecBody)
+
+genRecord :: Gen String
+genRecord = do
+    record <- Gen.string (Range.constant 3 10) Gen.lower
+    doubleColon <- Gen.constant " :: "
+    typeConst <- genConstructor
+    pure $ concat [record,doubleColon,typeConst]
+
+genRecordAccessorConstructor :: Gen String
+genRecordAccessorConstructor = do
+    dta <- Gen.constant "data "
+    dName <- genDeclarationName
+    equal <- Gen.constant " = "
+    const <- genConstructor
+    records <- Gen.list (Range.constant 2 5) genRecord
+    pure $ concat [dta, dName, equal, const, " { ", intercalate " , " records, " }"]

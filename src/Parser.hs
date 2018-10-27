@@ -27,6 +27,14 @@ module Parser
        , newTypeParserFinal
        , newTypeUnparse
        , finalNewTypeParser
+       -- Record Accessor parser
+       , betweenParser
+       , recordAccParser
+       , recordAccessorDataTypeParser
+       , unparseRecord
+       , parseRecord
+       , parseMultipleRecords
+       , unparseMultipleRecords
        ) where
 
 import           Data.List                       (intercalate, intersperse,
@@ -278,14 +286,56 @@ newTypeUnparse tuple = concat [ "newtype "
                               ]
 
 -- Record Accessor Parsers
--- TODO:
-{-
-recordAccessorParser :: Parsec String () (String, [(String, (String,String))])
-recordAccessorParser = do
+-- Note a record accessor can show up in any constructor of a
+-- given sum type therefore you must first parse with record accessor
+-- parser then a data constructor parser.
+                                                 -- Type, Constructor, [record,type]
+                                                 -- TODO: Feed this through the parsers,
+                                                 -- generators and unparsers
+                                                 -- This parser is what she be tested
+                                                 -- in parseMultipleRecords
+recordAccessorDataTypeParser :: Parsec String () (String, String, [(String, String)])
+recordAccessorDataTypeParser = do
     _ <- string "data"
     _ <- many space
     typeName <- many alphaNum
-    between (char '{'}) (char '{') (betweenParser)
-    pure (typeName, )
+    _ <- many space
+    _ <- string "="
+    _ <- many space
+    consName <- many alphaNum
+    _ <- many space
+    accessorsAndConstructors <- betweenParser
+    pure (typeName, consName, accessorsAndConstructors)
 
--}
+betweenParser :: Parsec String () [(String, String)]
+betweenParser = do
+    _ <- string "{ "
+    first <- recordAccParser
+    rest <- manyTill (string ", " *> recordAccParser) (string "}")
+    pure (first : rest)
+
+recordAccParser :: Parsec String () (String, String)
+recordAccParser = do
+    recAcessor <- many alphaNum
+    _ <- string " :: "
+    recType <- many alphaNum
+    _ <- many space
+    pure (recAcessor,recType)
+
+parseRecord :: String -> Either ParseError (String, String)
+parseRecord = parse recordAccParser ""
+
+parseMultipleRecords :: String -> Either ParseError (String, String, [(String, String)])
+parseMultipleRecords = parse recordAccessorDataTypeParser ""
+
+unparseMultipleRecords :: (String, String, [(String, String)]) -> String
+unparseMultipleRecords (typeName, constructorName, records) =
+    "data " ++ typeName ++ " = " ++ constructorName ++ " " ++ "{ " ++ helper records
+  where
+    helper :: [(String, String)] -> String
+    helper [] = []
+    helper [x] = unparseRecord x ++ " }"
+    helper (x : xs) = unparseRecord x ++ " , " ++ helper xs
+
+unparseRecord :: (String, String) -> String
+unparseRecord (recAccessor, recType) = concat [recAccessor, " :: ", recType]
