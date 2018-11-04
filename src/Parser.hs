@@ -1,26 +1,10 @@
 module Parser
-       ( dataTypeName
-       , dataTypeParser
-       , defaultParseMode'
-       , firstConstructor
-       , justType
-       , newTypeParser
-       , parseDataDeclarations
-       , parseNewTypes
-       , recordDTParser
+       ( defaultParseMode'
        , removeNewLines
-       , singleProductDTParser
-       , strictAndParentheses
-       , strictOnly
-       , sumDTParser
        , unParseDataDec
-       , parseBeforePipe
-       , equals
-
        , dataTypeParser'
        , dataTypeParserConstructorsWithSubTypes
        , finalDataTypeParser
-
        , normalDatatypeParser
        , unParseNormalDataDec
        , finalNormalDataTypeParser
@@ -33,18 +17,25 @@ module Parser
        , recordAccessorDataTypeParser
        , unparseRecord
        , parseRecord
+       , unparseMixedDataType
        , parseMultipleRecords
        , unparseMultipleRecords
+       , mixedDatatypeParser'
+       , recordParse
+       , normalSubtypeParse
+       , unparseRecordsOrConstructors
        ) where
 
-import           Data.List                       (intercalate, intersperse,
-                                                  unwords)
+import           Data.Char                       (isSpace)
+import           Data.List                       (dropWhileEnd, intercalate,
+                                                  intersperse, replicate,
+                                                  unwords, unzip, zipWith)
 import           Language.Haskell.Exts.Extension (Extension (..), Language (..))
 import           Language.Haskell.Exts.Fixity    (preludeFixities)
 import           Language.Haskell.Exts.Parser    (ParseMode (..))
 import           Text.Parsec                     (ParseError, Parsec, alphaNum,
-                                                  anyChar, between, char,
-                                                  eof, many, manyTill, newline,
+                                                  anyChar, between, char, eof,
+                                                  many, manyTill, newline,
                                                   noneOf, parse, sepBy, sepBy1,
                                                   sepEndBy, skipMany, space,
                                                   string, try, (<|>))
@@ -54,113 +45,11 @@ import           Text.Parsec                     (ParseError, Parsec, alphaNum,
 -- | Removes all newline characters.
 removeNewLines :: [String] -> [String]
 removeNewLines [] = []
-removeNewLines (x:xs) = do
+removeNewLines (x:xs) =
     case parse (skipMany newline *> try (many $ noneOf ['\n'] <* skipMany newline)) "" x of
         Left parseError -> error $ show parseError
         Right str       -> [str] ++ removeNewLines xs
 
--- | Data type parsers
-
--- | Parses data type definitions. Parsers in this package are
--- not interested in data constructors, only types existing in
--- other types.
--- TODO: Create a test for data type parsers via hedgehog
--- Prob need generators to create sum types and product types.
-parseDataDeclarations :: [String] -> [(String, [String])]
-parseDataDeclarations [] = []
-parseDataDeclarations (x:xs) =
-    case parse (try dataTypeParser <|> sumDTParser) "" x of
-        Left _       -> parseDataDeclarations xs
-        Right result -> [(head $ words result, tail $ words result)] ++ parseDataDeclarations xs
-
-
-dataTypeName :: Parsec String () String
-dataTypeName = string "data" *> many space *> many alphaNum <* many space
-
-dataTypeParser :: Parsec String () String
-dataTypeParser =  ((try singleProductDTParser) <|> recordDTParser)
-
-firstConstructor :: Parsec String () String
-firstConstructor = char '=' *> many space *> many alphaNum <* many space
-
-singleProductDTParser :: Parsec String () String
-singleProductDTParser = do
-    typeName <- dataTypeName
-    _ <- firstConstructor
-    first <- firstParse
-    rest <- secondParse
-    pure $ typeName ++ " " ++ concat (intersperse " " ([first] ++ rest))
-  where
-        firstParse = char '{' *> many space *> recordAccessorTypeParse
-        recordAccessorTypeParse = try (char '_')
-                                      *> (many alphaNum)
-                                      *> many (char ':') `sepBy` space
-                                      *> ((try strictAndParentheses) <|> strictOnly)
-        secondParse = many space *> manyTill (char ',' *> many space *> recordAccessorTypeParse) (many space *> char '}')
-
-strictAndParentheses :: Parsec String () String
-strictAndParentheses = char '!'
-                    *> char '('
-                    *> (concat <$> (sepBy1 (many alphaNum) (char ' '))) <* char ')'
-
-strictOnly :: Parsec String () String
-strictOnly = char '!' *> many alphaNum <* many space
-
-justType :: Parsec String () String
-justType = many alphaNum <* many space
-
-sumDTParser :: Parsec String () String
-sumDTParser = do
-    typeName <- dataTypeName
-    firstTypeOfFirstConst <- char '=' *> many space *> many alphaNum *> many space *> many alphaNum <* many space
-    secondConstWithType <- concat <$> manyTill (char '|' *> many space *> (many alphaNum *> many space *> many alphaNum) `sepBy` (char ' ')) eof
-    pure $ typeName ++ " " ++ concat (intersperse " " ([firstTypeOfFirstConst] ++ secondConstWithType))
-
-
-recordDTParser :: Parsec String () String
-recordDTParser = do
-    typeName <- dataTypeName
-    _ <- firstConstructor
-    first <- firstParse
-    rest <- restRecordAccessorType
-    pure $ typeName  ++ " " ++ concat (intersperse " " ([first] ++ rest))
-  where
-    firstParse = char '{' *> many space *> firstRecordAccessorType
-    firstRecordAccessorType =        many space
-                                  *> many alphaNum *> many (char ':') `sepBy` space
-                                  *> ((try strictAndParentheses) <|> strictOnly <|> justType)
-    restRecordAccessorType = many space *> manyTill (char ',' *> many space *> firstRecordAccessorType) (many space *> char '}')
-
--- | Newtype parsers
-
--- | Parses newtype definitions.
-parseNewTypes :: [String] -> [(String,[String])]
-parseNewTypes [] = []
-parseNewTypes (x:xs) =
-    case parse newTypeParser "" x of
-        Left _ -> parseNewTypes xs
-        --TODO: You need a "super" parser to switch between "sub parsers" (type,data,newtype etc) so you can get your errors
-                         -- (Data constructor   ,   type constructors)
-        Right result    -> [(head $ words result, tail $ words result)] ++ parseNewTypes xs
-
-newTypeParser :: Parsec String () String
-newTypeParser =
-    string "newtype" *> (many alphaNum) `sepBy` space *> char '=' *> ((try recordNT) <|> derivingNT <|> normalNT)
-
-derivingNT :: Parsec String () String
-derivingNT = manyTill anyChar (string "deriving")
-
-normalNT :: Parsec String () String
-normalNT = many space *> many anyChar
-
-recordNT:: Parsec String () String
-recordNT = do
-    ntName <- many space *> many alphaNum <* many space
-    ntSubtype <- between
-                     (char '{')
-                     (char '}')
-                     ((many alphaNum) `sepBy` space *> many (char ':') *> many space *> many alphaNum <* many space)
-    pure $ ntName ++ " " ++ ntSubtype
 
 -------------- MISC ----------------
 
@@ -174,32 +63,6 @@ defaultParseMode' = ParseMode {
         fixities = Just preludeFixities,
         ignoreFunctionArity = False
         }
-
-
--- RESTART --
-
--- data MyType = Nullary |
--- data MyType = Product One Two Three |
-equals :: Parsec String () String
-equals = string "=" *> many space
-
---                                 DataDecName, Constructors, Types
-parseBeforePipe :: Parsec String () (String, [[String]])
-parseBeforePipe = do
-    dTName <- dataTypeName
-    _ <- equals
-    -- Gets constructors and potentially type constructors
-    -- before pipe
-    constructors <- (many alphaNum `sepBy` space) `sepBy` string "| "
-    pure (dTName, constructors)
-
-
------------- NEW PARSERS ------------
-
-
-
--- you currently parse datatypes and newtypes
--- TODO: record accessors
 
 -- DATA DECLARATION PARSERS
 
@@ -303,13 +166,12 @@ recordAccessorDataTypeParser = do
     _ <- string "="
     _ <- many space
     consName <- many alphaNum
-    _ <- many space
     accessorsAndConstructors <- betweenParser
     pure (typeName, consName, accessorsAndConstructors)
 
 betweenParser :: Parsec String () [(String, String)]
 betweenParser = do
-    _ <- string "{ "
+    _ <- string " { "
     first <- recordAccParser
     rest <- manyTill (string ", " *> recordAccParser) (string "}")
     pure (first : rest)
@@ -333,9 +195,70 @@ unparseMultipleRecords (typeName, constructorName, records) =
     "data " ++ typeName ++ " = " ++ constructorName ++ " " ++ "{ " ++ helper records
   where
     helper :: [(String, String)] -> String
-    helper [] = []
-    helper [x] = unparseRecord x ++ " }"
+    helper []       = []
+    helper [x]      = unparseRecord x ++ " }"
     helper (x : xs) = unparseRecord x ++ " , " ++ helper xs
 
 unparseRecord :: (String, String) -> String
 unparseRecord (recAccessor, recType) = concat [recAccessor, " :: ", recType]
+
+mixedDatatypeParser' :: String -> Either ParseError (String, [(String, [(String, String)])])
+mixedDatatypeParser' = parse mixedDatatypeParser ""
+
+mixedDatatypeParser :: Parsec String () (String, [(String, [(String, String)])])
+mixedDatatypeParser = do
+    _ <- string "data"
+    _ <- many space
+    typeName <- many alphaNum
+    _ <- many space
+    _ <- string "="
+    _ <- many space
+    constructors <- constructorsParse `sepBy` string "|"
+    pure (typeName, constructors)
+
+constructorsParse :: Parsec String () (String, [(String, String)])
+constructorsParse = do
+    _ <- many space
+    consName <- many alphaNum
+    _ <- many space
+    constructors <- try recordParse <|> normalSubtypeParse
+    pure (consName, constructors)
+
+recordParse :: Parsec String () [(String, String)]
+recordParse = do
+    _ <- string "{"
+    _ <- many space
+    rest <- try ((: []) <$> recordAccParser <* string "}") <|> multiRecodsParse
+    _ <- many space
+    pure rest
+
+multiRecodsParse :: Parsec String () [(String, String)]
+multiRecodsParse = do
+    first <- recordAccParser
+    rest <- manyTill (string ", " *> recordAccParser) (string "}")
+    pure (first : rest)
+
+normalSubtypeParse :: Parsec String () [(String, String)]
+normalSubtypeParse = do
+    subTypes <- try (many alphaNum `sepEndBy` space)
+    let filler = replicate (length subTypes) ""
+    pure $ zip filler subTypes
+
+unparseMixedDataType :: (String, [(String, [(String, String)])]) -> String
+unparseMixedDataType (typeName, constructors) = do
+    let rest = intercalate " | " $ map unparseRecordsOrConstructors constructors
+    concat ["data ", typeName, " = ", rest ]
+
+unparseRecordsOrConstructors :: (String, [(String, String)]) -> String
+unparseRecordsOrConstructors (_, []) = ""
+unparseRecordsOrConstructors (const, [("", "")]) =
+    const
+unparseRecordsOrConstructors (const, ("", subType) : rest) = do
+    let removeEmpties = filter (\x -> snd x /= "") rest
+    dropWhileEnd isSpace $ const ++ " " ++ subType ++ " " ++ unwords (map snd removeEmpties)
+unparseRecordsOrConstructors (const, recordTypes) = do
+    let (records, assocTypes) = unzip recordTypes
+    let zipRecords = zipWith (\ a b -> a ++ " :: " ++ b) records assocTypes
+    let finalRecords = intercalate " , " zipRecords
+    concat [const, " { ", finalRecords, " }"]
+

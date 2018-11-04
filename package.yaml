@@ -35,7 +35,7 @@ library:
   exposed-modules:
   - Parser
   - SrcManipulation
-  ghc-options:           -Wall
+  ghc-options:           -Weverything
 
 executables:
   repochart-exe:
@@ -58,5 +58,6 @@ tests:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -Weverything
     dependencies:
     - repochart

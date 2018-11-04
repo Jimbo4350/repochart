@@ -3,16 +3,18 @@ module Main where
 --import           Conduit
 --import qualified Data.Text                        as T
 --import           System.FilePath                  (takeExtension)
-import Data.Either (isRight)
+import           Data.Either                  (isRight)
 import           Language.Haskell.Exts.Parser (fromParseResult,
                                                parseModuleWithMode)
-import           SrcManipulation              (getDataDecls, printDeclarations,
-                                               returnListDecl, getNewTypeDecls, dataDecHasRecordAccessor)
+import           SrcManipulation              (dataDecHasRecordAccessor,
+                                               getDataDecls, getNewTypeDecls,
+                                               printDeclarations,
+                                               returnListDecl)
 
 import           Parser                       (defaultParseMode',
-                                               finalNormalDataTypeParser,
-                                               removeNewLines,
-                                               finalNewTypeParser)
+                                               finalNewTypeParser,
+                                               mixedDatatypeParser',
+                                               removeNewLines)
 {-
 main :: IO ()
 main =
@@ -64,8 +66,11 @@ main = do
     let recAccDataList = filter (isRight . dataDecHasRecordAccessor) (returnListDecl moduleSrsSpan)
 
     let dataRecAcc = removeNewLines $ printDeclarations recAccDataList
-    let dataStrings = map finalNormalDataTypeParser . removeNewLines $ printDeclarations dataList
-    let ntStrings = map finalNewTypeParser . removeNewLines $ printDeclarations newTypeList
+    let dataStrings = removeNewLines $ printDeclarations dataList
+    let ntStrings = removeNewLines $ printDeclarations newTypeList
     --print dataStrings
     --print ntStrings
     print dataRecAcc
+    print $ map mixedDatatypeParser' dataRecAcc
+    print $ map mixedDatatypeParser' dataStrings
+    print $ map finalNewTypeParser ntStrings

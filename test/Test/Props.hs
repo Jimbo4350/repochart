@@ -12,19 +12,19 @@ import           Hedgehog.Internal.TH       (discover)
 import           Parser                     (finalDataTypeParser,
                                              finalNewTypeParser,
                                              finalNormalDataTypeParser,
+                                             mixedDatatypeParser',
                                              newTypeUnparse,
                                              normalDatatypeParser,
-                                             parseDataDeclarations,
                                              parseMultipleRecords, parseRecord,
                                              unParseDataDec,
                                              unParseNormalDataDec,
                                              unparseMultipleRecords,
-                                             unparseRecord)
+                                             unparseRecord, unparseMixedDataType)
 
-import           Test.Gen                   (genDataDeclation,
+import           Test.Gen                   (genDataDeclation, genMixedDatatype,
                                              genNewTypeDeclaration,
-                                             genNullaryDataDeclation, genRecord,
-                                             genRecordAccessorConstructor)
+                                             genNonPartialRecordAccessorDataType,
+                                             genNullaryDataDeclation, genRecord)
 
 -- Potentially unnecessary as the parser tested in the last 2 properties
 -- works for nullary constructor only datatypes
@@ -68,14 +68,22 @@ prop_parseUnparseSingleRecord = property $ do
         Right str -> unparseRecord str === record
 
 -- Only tests this string format:
--- { auianfjlv :: RVETBtok , dcyqnvbgd :: DoYQ , eylexcij :: HQRUyN , hjmahiwegm :: GnvcHvVxJ }
+-- data SomeType = SomeConstructor { auianfjlv :: RVETBtok , dcyqnvbgd :: DoYQ , eylexcij :: HQRUyN , hjmahiwegm :: GnvcHvVxJ }
 prop_parseUnparseMultipleRecords :: Property
 prop_parseUnparseMultipleRecords = property $ do
-    records <- forAll genRecordAccessorConstructor
+    records <- forAll genNonPartialRecordAccessorDataType
     case parseMultipleRecords records of
         Left err  -> failWith Nothing $ show err
         Right str -> unparseMultipleRecords str === records
 
+-- Only tests this string format:
+-- data SomeType = SomeConstructor { eylexcij :: HQRUyN , hjmahiwegm :: GnvcHvVxJ } | AnotherConstructor
+prop_parseUnparseDataDecl :: Property
+prop_parseUnparseDataDecl = property $ do
+    records <- forAll genMixedDatatype
+    case mixedDatatypeParser' records of
+        Left err  -> failWith Nothing $ show err
+        Right str -> unparseMixedDataType str === records
 
 tests :: IO Bool
 tests =

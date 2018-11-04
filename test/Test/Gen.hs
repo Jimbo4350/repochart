@@ -2,11 +2,12 @@ module Test.Gen
        ( genConstructorWithSubtypes
        , genDataDeclation
        , genDeclarationName
+       , genMixedDatatype
        , genNewTypeDeclaration
        , genNullaryDataDeclation
        , genConstructor
        , genRecord
-       , genRecordAccessorConstructor
+       , genNonPartialRecordAccessorDataType
        ) where
 import           Data.List      (intercalate, intersperse)
 import           Hedgehog       (Gen)
@@ -24,13 +25,19 @@ genConstructorWithSubtypes = do
     constructs <- Gen.list (Range.constant 1 5) genDeclarationName
     pure . concat $ intersperse " " constructs
 
+genConstructorWithRecords :: Gen String
+genConstructorWithRecords = do
+    const <- genConstructor
+    records <- Gen.list (Range.constant 1 5) genRecord
+    pure $ concat [const, " { ", intercalate " , " records, " }"]
+
 genNullaryDataDeclation :: Gen String
 genNullaryDataDeclation = do
     dta <- Gen.constant "data "
     dName <- genDeclarationName
+    equal <- Gen.constant " = "
     nullaryConstructors <- Gen.list (Range.constant 1 5) genDeclarationName
     pipe <- Gen.constant " | "
-    equal <- Gen.constant " = "
     let allConstructors = intersperse pipe nullaryConstructors
     pure . concat $ [dta, dName, equal] ++ allConstructors
 
@@ -38,9 +45,9 @@ genDataDeclation :: Gen String
 genDataDeclation = do
     dta <- Gen.constant "data "
     dName <- genDeclarationName
+    equal <- Gen.constant " = "
     constructs <- Gen.list (Range.constant 1 5) genConstructorWithSubtypes
     pipe <- Gen.constant " | "
-    equal <- Gen.constant " = "
     let allConstructors = intersperse pipe constructs
     pure . concat $ [dta, dName, equal] ++ allConstructors
 
@@ -68,11 +75,24 @@ genRecord = do
     typeConst <- genConstructor
     pure $ concat [record,doubleColon,typeConst]
 
-genRecordAccessorConstructor :: Gen String
-genRecordAccessorConstructor = do
+genNonPartialRecordAccessorDataType :: Gen String
+genNonPartialRecordAccessorDataType = do
     dta <- Gen.constant "data "
     dName <- genDeclarationName
     equal <- Gen.constant " = "
     const <- genConstructor
     records <- Gen.list (Range.constant 2 5) genRecord
     pure $ concat [dta, dName, equal, const, " { ", intercalate " , " records, " }"]
+
+-- Best representation of data declarations you are likely
+-- to encounter in the wild.
+genMixedDatatype :: Gen String
+genMixedDatatype = do
+    dta <- Gen.constant "data "
+    dName <- genDeclarationName
+    equal <- Gen.constant " = "
+    let randomConstructor = Gen.choice [ genConstructorWithSubtypes
+                                       , genConstructorWithRecords
+                                       ]
+    constructors <- Gen.list (Range.linear 1 10) randomConstructor
+    pure $ concat [dta, dName, equal, intercalate " | " constructors]
