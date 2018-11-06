@@ -59,15 +59,6 @@ prop_parseUnparseNewtype = property $ do
 -- Record accessor parsers tests
 
 -- Only tests this string format:
--- auianfjlv :: RVETBtok
-prop_parseUnparseSingleRecord :: Property
-prop_parseUnparseSingleRecord = property $ do
-    record <- forAll genRecord
-    case parseRecord record of
-        Left err  -> failWith Nothing $ show err
-        Right str -> unparseRecord str === record
-
--- Only tests this string format:
 -- data SomeType = SomeConstructor { auianfjlv :: RVETBtok , dcyqnvbgd :: DoYQ , eylexcij :: HQRUyN , hjmahiwegm :: GnvcHvVxJ }
 prop_parseUnparseMultipleRecords :: Property
 prop_parseUnparseMultipleRecords = property $ do

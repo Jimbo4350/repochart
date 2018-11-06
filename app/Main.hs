@@ -68,9 +68,17 @@ main = do
     let dataRecAcc = removeNewLines $ printDeclarations recAccDataList
     let dataStrings = removeNewLines $ printDeclarations dataList
     let ntStrings = removeNewLines $ printDeclarations newTypeList
-    --print dataStrings
-    --print ntStrings
+
+    print "Record Accessor Datatypes"
     print dataRecAcc
+
+    print "Normal data declaration types"
+    print dataStrings
+
+    print "Newtype data declaration types"
+    print ntStrings
+    -- TODO: Newtypes can have record accessors and ' can be used in a datatype declaration.
+    -- Need a parser that switches to appropriate parser based on
     print $ map mixedDatatypeParser' dataRecAcc
     print $ map mixedDatatypeParser' dataStrings
     print $ map finalNewTypeParser ntStrings

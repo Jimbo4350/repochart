@@ -12,8 +12,7 @@ module Parser
        , newTypeUnparse
        , finalNewTypeParser
        -- Record Accessor parser
-       , betweenParser
-       , recordAccParser
+       , recordAccessorsParser
        , recordAccessorDataTypeParser
        , unparseRecord
        , parseRecord
@@ -21,7 +20,7 @@ module Parser
        , parseMultipleRecords
        , unparseMultipleRecords
        , mixedDatatypeParser'
-       , recordParse
+       , constructorsParse
        , normalSubtypeParse
        , unparseRecordsOrConstructors
        ) where
@@ -31,14 +30,14 @@ import           Data.List                       (dropWhileEnd, intercalate,
                                                   intersperse, replicate,
                                                   unwords, unzip, zipWith)
 import           Language.Haskell.Exts.Extension (Extension (..), Language (..))
-import           Language.Haskell.Exts.Fixity    (preludeFixities)
+import           Language.Haskell.Exts.Fixity    (baseFixities, preludeFixities)
 import           Language.Haskell.Exts.Parser    (ParseMode (..))
 import           Text.Parsec                     (ParseError, Parsec, alphaNum,
                                                   anyChar, between, char, eof,
                                                   many, manyTill, newline,
-                                                  noneOf, parse, sepBy, sepBy1,
-                                                  sepEndBy, skipMany, space,
-                                                  string, try, (<|>))
+                                                  noneOf, oneOf, parse, sepBy,
+                                                  sepBy1, sepEndBy, skipMany, option,
+                                                  space, string, try, (<|>))
 
 -- | General parsers
 
@@ -60,7 +59,7 @@ defaultParseMode' = ParseMode {
         extensions = map EnableExtension [minBound .. maxBound],
         ignoreLanguagePragmas = True,
         ignoreLinePragmas = True,
-        fixities = Just preludeFixities,
+        fixities = Just (preludeFixities ++ baseFixities),
         ignoreFunctionArity = False
         }
 
@@ -166,26 +165,16 @@ recordAccessorDataTypeParser = do
     _ <- string "="
     _ <- many space
     consName <- many alphaNum
-    accessorsAndConstructors <- betweenParser
+    _ <- many space
+    accessorsAndConstructors <- recordAccessorsParser
     pure (typeName, consName, accessorsAndConstructors)
 
-betweenParser :: Parsec String () [(String, String)]
-betweenParser = do
-    _ <- string " { "
-    first <- recordAccParser
-    rest <- manyTill (string ", " *> recordAccParser) (string "}")
-    pure (first : rest)
-
-recordAccParser :: Parsec String () (String, String)
-recordAccParser = do
-    recAcessor <- many alphaNum
-    _ <- string " :: "
-    recType <- many alphaNum
-    _ <- many space
-    pure (recAcessor,recType)
 
 parseRecord :: String -> Either ParseError (String, String)
-parseRecord = parse recordAccParser ""
+parseRecord = parse singleRecordAccParser ""
+
+unparseRecord :: (String, String) -> String
+unparseRecord (recAccessor, recType) = concat [recAccessor, " :: ", dropWhileEnd isSpace recType]
 
 parseMultipleRecords :: String -> Either ParseError (String, String, [(String, String)])
 parseMultipleRecords = parse recordAccessorDataTypeParser ""
@@ -199,8 +188,6 @@ unparseMultipleRecords (typeName, constructorName, records) =
     helper [x]      = unparseRecord x ++ " }"
     helper (x : xs) = unparseRecord x ++ " , " ++ helper xs
 
-unparseRecord :: (String, String) -> String
-unparseRecord (recAccessor, recType) = concat [recAccessor, " :: ", recType]
 
 mixedDatatypeParser' :: String -> Either ParseError (String, [(String, [(String, String)])])
 mixedDatatypeParser' = parse mixedDatatypeParser ""
@@ -209,10 +196,9 @@ mixedDatatypeParser :: Parsec String () (String, [(String, [(String, String)])])
 mixedDatatypeParser = do
     _ <- string "data"
     _ <- many space
-    typeName <- many alphaNum
+    typeName <- try (many alphaNum) <|> many (oneOf "'")
     _ <- many space
     _ <- string "="
-    _ <- many space
     constructors <- constructorsParse `sepBy` string "|"
     pure (typeName, constructors)
 
@@ -221,28 +207,36 @@ constructorsParse = do
     _ <- many space
     consName <- many alphaNum
     _ <- many space
-    constructors <- try recordParse <|> normalSubtypeParse
-    pure (consName, constructors)
-
-recordParse :: Parsec String () [(String, String)]
-recordParse = do
-    _ <- string "{"
+    types <- try recordAccessorsParser <|> normalSubtypeParse
     _ <- many space
-    rest <- try ((: []) <$> recordAccParser <* string "}") <|> multiRecodsParse
-    _ <- many space
-    pure rest
+    pure (consName, types)
 
-multiRecodsParse :: Parsec String () [(String, String)]
-multiRecodsParse = do
-    first <- recordAccParser
-    rest <- manyTill (string ", " *> recordAccParser) (string "}")
-    pure (first : rest)
+-- Parses one or multiple records
+recordAccessorsParser :: Parsec String () [(String, String)]
+recordAccessorsParser =
+    between (char '{') (char '}') (singleRecordAccParser `sepBy` string ",")
+
+singleRecordAccParser :: Parsec String () (String, String)
+singleRecordAccParser = do
+    _ <- many space
+    recAcessor <- many alphaNum
+    _ <- many space
+    _ <- string "::"
+    _ <- many space
+    exclaimation <- option "" (string "!")
+    openB <- option "" (string "(")
+    recType <- many alphaNum `sepBy` (space <|> char '\'')
+    closeB <- option "" (string ")")
+    _ <- many space
+    pure (recAcessor, exclaimation ++ openB ++ concat recType ++ closeB)
 
 normalSubtypeParse :: Parsec String () [(String, String)]
 normalSubtypeParse = do
-    subTypes <- try (many alphaNum `sepEndBy` space)
-    let filler = replicate (length subTypes) ""
-    pure $ zip filler subTypes
+    const <- (many alphaNum `sepBy` space)
+    --subTypes <- option [""] (many alphaNum `sepEndBy` space)
+    let filler = replicate (length const) ""
+    --pure [("", const)]
+    pure $ zip filler const
 
 unparseMixedDataType :: (String, [(String, [(String, String)])]) -> String
 unparseMixedDataType (typeName, constructors) = do
@@ -258,7 +252,7 @@ unparseRecordsOrConstructors (const, ("", subType) : rest) = do
     dropWhileEnd isSpace $ const ++ " " ++ subType ++ " " ++ unwords (map snd removeEmpties)
 unparseRecordsOrConstructors (const, recordTypes) = do
     let (records, assocTypes) = unzip recordTypes
-    let zipRecords = zipWith (\ a b -> a ++ " :: " ++ b) records assocTypes
+    let zipRecords = zipWith (\ a b -> a ++ " :: " ++ dropWhileEnd isSpace b) records assocTypes
     let finalRecords = intercalate " , " zipRecords
     concat [const, " { ", finalRecords, " }"]
 
